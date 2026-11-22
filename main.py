@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
-"""Hand-in entrypoint for The Overnight Edition (NI22, @desember179).
+"""Hand-in entrypoint for The Overnight Edition (news-image-20261122).
 
-Copies the committed entry.png into the directory named by the
-MAKEFUN_OUTPUT_DIR environment variable (default: /output).
+The artwork is built locally by draw.py and committed as entry.png.
+This entrypoint only copies that committed file into the directory the
+grader names through MAKEFUN_OUTPUT_DIR — it never hardcodes a path.
+Standard library only.
 """
 import os
 import shutil
+import sys
 
 
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    src = os.path.join(here, "entry.png")
     out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
     os.makedirs(out_dir, exist_ok=True)
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entry.png")
     dst = os.path.join(out_dir, "entry.png")
     shutil.copyfile(src, dst)
-    print(f"delivered {dst} ({os.path.getsize(dst)} bytes)")
+    print(f"wrote {dst} ({os.path.getsize(dst)} bytes)")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
