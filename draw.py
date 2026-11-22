@@ -1,35 +1,20 @@
 #!/usr/bin/env python3
-"""The Overnight Edition — round 3 REVISED build for @desember179 (NI22).
+"""The Overnight Edition - NI22 round 4 for @desember179.
 
-Revision driven by BEDAH-TOP1.md (pixel-measured dissection of the actual
-#1 entry, irvan-motion 989.306), which overrides BEDAH-R3 where they
-conflict. What changed versus the first r3 build:
-
-- Certainty chips REMOVED from every card (#1 has zero). Replaced by D1
-  slug bars: a region-coloured bar on EVERY pictured card (leads 20 px,
-  minis 15 px), white bold caps = PLACE/TOPIC + the card's biggest fact.
-- Lead headlines back to ~18 px serif bold (pitch 19); mini headlines
-  ~13 px serif bold, 2 lines, NO deck (D9 / D2).
-- Lead scenes ~110 px (D7) with the dominant subject >=70% of scene
-  height; the saturated fields stay (orange burst, lit dome, coloured
-  strata), rescaled.
-- 21 pictured cards (D2): 3 leads + 18 deck-less minis; briefs drop to
-  16, total stays 37 stories (POOL22-BARU v3 only).
-- Numbered badge (diameter ~17 px) on EVERY scene, bottom-right (D3);
-  map pins numbered for ALL 37 stories, briefs included (D3).
-- Subdeck (D4): italic serif ~19 px under the date = the 3 lead
-  headlines joined with " . ".
-- Briefs rebuilt to D5: coloured region number badge + bold coloured
-  region caps label + ONE line + (source); pitch 13 px, font 11 px.
-- Tally (D10): 16 px, labels INSIDE segments, widths tightly
-  proportional, sum == 37 (cards + briefs per region).
-- Scenes (D12): flat vector, one sky gradient, max 3 large elements,
-  in-scene labels only >=14 px, region colours mid-tone.
-- Lead captions (D11): numbered coloured captions under lead scenes.
-- DATE CHECK keeps its three-part content from the first r3 build
-  (LEFT OUT / NOT YET / UNCONFIRMED) — deeper than #1's, no new space.
-
-PIL only. Canvas 1024x1024. Writes entry.png + entry-300.png beside itself.
+FALLER HYBRID: the round-2 page (13 pictured cards + 27 briefs, cream
+field, date-as-masthead, red numbers strip, overnight timeline spine)
+kept as the base, with five measured additions and nothing else:
+  (a) a 16 px region tally bar under the numbers strip, segment widths
+      proportional to story counts, labels inside the segments, and the
+      segment counts summing exactly to the page's story total;
+  (b) a fact-bearing slug bar on every pictured card (place/topic plus
+      the card's biggest fact);
+  (c) an italic subdeck under the date joining the three lead headlines;
+  (d) a numbered badge on every pictured scene and numbered map pins
+      for every story on the page, briefs included;
+  (e) the round-2 DATE CHECK kept at full depth.
+Written fresh for round 4. PIL + stdlib only. Renders entry.png and
+entry-300.png next to this file.
 """
 import math
 import os
@@ -38,602 +23,565 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-BASE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, BASE)
-from mapdata import WORLD  # noqa: E402  (committed data asset)
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from mapdata import WORLD  # data asset: country polygons as lon:lat strings
 
-PAGE_W = 1024
-CREAM = (246, 240, 221)
-FACE = (255, 253, 246)
-INKC = (24, 36, 58)
-NAVYC = (22, 40, 63)
-REDC = (193, 39, 45)
-GREYC = (110, 104, 90)
-SHADC = (198, 190, 168)
-BACKC = (232, 225, 203)
+W = H = 1024
+MX = 14                      # page margin
+CW = W - 2 * MX              # content width = 996
+PAPER = (246, 240, 221)
+CARD_BG = (255, 253, 246)
+INK = (24, 36, 58)
+NAVY = (22, 40, 63)
+RED = (193, 39, 45)
+GREY = (110, 104, 90)
+SHADOW = (198, 190, 168)
+SHEET = (232, 225, 203)
 WHITE = (255, 255, 255)
 
-FONT_DIR = os.path.join(BASE, "fonts")
+REGIONS = {
+    "GULF": (38, 92, 120),
+    "ARABIA": (150, 96, 36),
+    "ASIA": (44, 116, 84),
+    "CLIMATE": (30, 122, 128),
+    "OCEANIA": (146, 92, 32),
+    "EUROPE": (52, 110, 62),
+    "AMERICAS": (104, 74, 148),
+}
+
+FONT_DIR = os.path.join(HERE, "fonts")
 SERIF = os.path.join(FONT_DIR, "PlayfairDisplay-900.ttf")
-BOLD = os.path.join(FONT_DIR, "Archivo-Bold.ttf")
-MED = os.path.join(FONT_DIR, "Archivo-Medium.ttf")
-
-canvas = Image.new("RGB", (PAGE_W, PAGE_W), CREAM)
-pen = ImageDraw.Draw(canvas, "RGBA")
+SANS_B = os.path.join(FONT_DIR, "Archivo-Bold.ttf")
+SANS = os.path.join(FONT_DIR, "Archivo-Medium.ttf")
 
 
-def F(kind, size):
-    return ImageFont.truetype(kind, size)
+def F(path, size):
+    return ImageFont.truetype(path, size)
 
 
-def tw(fnt, s):
-    return pen.textlength(s, font=fnt)
+img = Image.new("RGB", (W, H), PAPER)
+dr = ImageDraw.Draw(img, "RGBA")
 
 
-def wrap_to(fnt, s, limit):
-    out, cur = [], ""
+def tw(f, s):
+    return dr.textlength(s, font=f)
+
+
+def wrap(f, s, maxw):
+    lines, cur = [], ""
     for word in s.split():
         trial = (cur + " " + word).strip()
-        if tw(fnt, trial) <= limit:
+        if tw(f, trial) <= maxw:
             cur = trial
         else:
             if cur:
-                out.append(cur)
+                lines.append(cur)
             cur = word
     if cur:
-        out.append(cur)
-    return out
+        lines.append(cur)
+    return lines
 
 
-def spaced(x, y, s, fnt, colour, gap=1):
-    cx = x
+def spaced(x, y, s, f, fill, gap=1):
     for ch in s:
-        pen.text((cx, y), ch, font=fnt, fill=colour)
-        cx += tw(fnt, ch) + gap
-    return cx
+        dr.text((x, y), ch, font=f, fill=fill)
+        x += tw(f, ch) + gap
+    return x
 
 
-def sheet(x, y, w, h):
-    pen.rectangle([x - 4, y - 4, x + w - 4, y + h - 4], fill=BACKC)
-    pen.rectangle([x + 6, y + 7, x + w + 6, y + h + 7], fill=SHADC)
-    pen.rectangle([x, y, x + w, y + h], fill=FACE, outline=INKC, width=1)
+def spaced_w(f, s, gap=1):
+    return sum(tw(f, c) for c in s) + gap * (len(s) - 1)
 
 
-def gradient(x, y, w, h, top, bottom, steps=22):
+def pill(x, y, s, f, bg, fg=WHITE, pad=5):
+    w = int(tw(f, s)) + 2 * pad
+    h = f.size + 7
+    dr.rounded_rectangle([x, y, x + w, y + h], radius=4, fill=bg)
+    dr.text((x + pad, y + 3), s, font=f, fill=fg)
+    return w
+
+
+def badge(cx, cy, n, col, dia=17):
+    r = dia / 2
+    dr.ellipse([cx - r, cy - r, cx + r, cy + r], fill=col,
+               outline=WHITE, width=2)
+    f = F(SANS_B, 10 if n < 10 else 9)
+    s = str(n)
+    dr.text((cx - tw(f, s) / 2, cy - f.size / 2 - 1), s, font=f, fill=WHITE)
+
+
+def gradient(x, y, w, h, top, bottom, steps=24):
     for i in range(steps):
         t = i / steps
         c = tuple(int(top[k] + (bottom[k] - top[k]) * t) for k in range(3))
-        pen.rectangle([x, y + h * i / steps, x + w, y + h * (i + 1) / steps + 1], fill=c)
-
-
-def lighten(col, f=0.45):
-    return tuple(int(c + (255 - c) * f) for c in col)
+        dr.rectangle([x, y + h * i / steps, x + w, y + h * (i + 1) / steps + 1],
+                     fill=c)
 
 
 def starfield(x, y, w, h, n, seed):
     rnd = random.Random(seed)
     for _ in range(n):
         sx = x + rnd.uniform(4, w - 4)
-        sy = y + rnd.uniform(3, h * 0.45)
+        sy = y + rnd.uniform(3, h * 0.55)
         r = rnd.choice([1, 1, 2])
-        pen.ellipse([sx - r, sy - r, sx + r, sy + r], fill=(240, 238, 210))
+        dr.ellipse([sx - r, sy - r, sx + r, sy + r], fill=(240, 238, 210))
 
 
-def burst(cx, cy, rings):
-    """Concentric saturated burst — dominant subject of a lead scene."""
-    r_out = rings[0][0]
-    for r, col in rings:
-        pen.ellipse([cx - r, cy - r * 0.82, cx + r, cy + r * 0.82], fill=col)
-    for a in range(0, 360, 24):
-        x2 = cx + r_out * math.cos(math.radians(a))
-        y2 = cy + r_out * 0.82 * math.sin(math.radians(a))
-        pen.line([cx, cy, x2, y2], fill=rings[1][1], width=3)
-    pen.ellipse([cx - 8, cy - 6, cx + 8, cy + 6], fill=(255, 246, 214))
+def burst(cx, cy, r, col, spokes=8, width=2):
+    for a in range(0, 360, 360 // spokes):
+        dr.line([cx, cy, cx + r * math.cos(math.radians(a)),
+                 cy + r * math.sin(math.radians(a))], fill=col, width=width)
+    dr.ellipse([cx - 3, cy - 3, cx + 3, cy + 3], fill=(255, 240, 190))
 
 
-def badge(x_right, y_bottom, n, col, d=17):
-    """D3: numbered badge, bottom-right of a scene."""
-    r = d / 2
-    cx, cy = x_right - r - 3, y_bottom - r - 3
-    pen.ellipse([cx - r, cy - r, cx + r, cy + r], fill=col, outline=WHITE, width=2)
-    f = F(BOLD, 10 if n < 10 else 9)
-    s = str(n)
-    pen.text((cx - tw(f, s) / 2, cy - f.size / 2 - 1), s, font=f, fill=WHITE)
+# ------------------------------------------------------------- masthead
+f_name = F(SANS_B, 15)
+f_claim = F(SANS_B, 11)
+dr.text((MX, 12), "THE OVERNIGHT EDITION", font=f_name, fill=NAVY)
+dr.text((MX + tw(f_name, "THE OVERNIGHT EDITION") + 10, 15),
+        "· THE NIGHT DESK · EST. TONIGHT", font=f_claim, fill=GREY)
+claim = "40 STORIES · 7 REGIONS · EVERY ONE FROM ONE NIGHT"
+dr.text((W - MX - tw(f_claim, claim), 15), claim, font=f_claim, fill=GREY)
+dr.line([(MX, 36), (W - MX, 36)], fill=INK, width=2)
 
-
-# Region scheme of this paper (mid-tone colours, D12).
-REGIONS = {
-    "GULF": (45, 88, 146),
-    "ARABIA": (176, 110, 20),
-    "ASIA": (17, 107, 88),
-    "CLIMATE": (54, 143, 145),
-    "OCEANIA": (181, 83, 39),
-    "EUROPE": (78, 128, 45),
-    "AMERICAS": (156, 46, 90),
-}
-
-# ============================================================ masthead zone
-fbar = F(BOLD, 15)
-fbar2 = F(BOLD, 11)
-pen.text((14, 10), "THE OVERNIGHT EDITION", font=fbar, fill=NAVYC)
-pen.text((14 + tw(fbar, "THE OVERNIGHT EDITION") + 10, 13),
-         "· THE NIGHT DESK · EST. TONIGHT", font=fbar2, fill=GREYC)
-mast_r = "37 STORIES · 7 REGIONS · EVERY ONE FROM ONE NIGHT"
-pen.text((PAGE_W - 14 - tw(fbar2, mast_r), 13), mast_r, font=fbar2, fill=GREYC)
-pen.line([(14, 33), (PAGE_W - 14, 33)], fill=INKC, width=2)
-
-# The date IS the masthead: render huge, crop, scale into a 952x88 box.
-DATE_TXT = "SUNDAY 22 NOVEMBER 2026"
-huge = F(SERIF, 345)
+# Date as masthead: draw large on its own layer, scale into a 952x84 box.
+DATE_TEXT = "SUNDAY 22 NOVEMBER 2026"
 layer = Image.new("RGBA", (5200, 430), (0, 0, 0, 0))
-ImageDraw.Draw(layer).text((10, 0), DATE_TXT, font=huge, fill=NAVYC + (255,))
-layer = layer.crop(layer.getbbox()).resize((952, 82), Image.LANCZOS)
-canvas.paste(layer, (36, 37), layer)
-pen = ImageDraw.Draw(canvas, "RGBA")
-DATE_CAP_PX = 82
+ImageDraw.Draw(layer).text((10, 0), DATE_TEXT, font=F(SERIF, 345),
+                           fill=NAVY + (255,))
+layer = layer.crop(layer.getbbox()).resize((952, 84), Image.LANCZOS)
+img.paste(layer, (36, 42), layer)
+dr = ImageDraw.Draw(img, "RGBA")
 
-# ============================================================ D4 subdeck
-# Italic serif ~19 px: the 3 lead headlines joined with " . ".
+# (c) Italic subdeck: the three lead headlines joined, sheared serif,
+# fitted to a single line under the date.
 LEAD_HEADS = [
     "IRGC claims two Patriot radars hit in Bahrain",
-    "Missile downed bound for the Mecca region",
-    "Deep M4.1 quake under Myanmar",
+    "Houthi missile intercepted bound for Mecca region",
+    "Deep M4.1 quake strikes Myanmar before dawn",
 ]
-SUBDECK = " · ".join(LEAD_HEADS)
-sub_f = F(SERIF, 19)
-sub_layer = Image.new("RGBA", (2400, 30), (0, 0, 0, 0))
-ImageDraw.Draw(sub_layer).text((10, 0), SUBDECK, font=sub_f, fill=(70, 62, 48, 255))
-sub_layer = sub_layer.crop(sub_layer.getbbox())
-# fake italic: shear the layer so the top leans right
-w0, h0 = sub_layer.size
-sheared = sub_layer.transform((w0 + 8, h0), Image.AFFINE, (1, -0.28, 0.28 * h0, 0, 1, 0))
-if sheared.size[0] > 996:
-    sheared = sheared.resize((996, h0), Image.LANCZOS)
-canvas.paste(sheared, ((PAGE_W - sheared.size[0]) // 2, 124), sheared)
-pen = ImageDraw.Draw(canvas, "RGBA")
-SUBDECK_PX = 19
+sub_text = " · ".join(LEAD_HEADS)
+sub = Image.new("RGBA", (4200, 90), (0, 0, 0, 0))
+ImageDraw.Draw(sub).text((6, 4), sub_text, font=F(SERIF, 40),
+                         fill=(70, 62, 48, 255))
+sub = sub.crop(sub.getbbox())
+sub = sub.transform(sub.size, Image.AFFINE, (1, 0.30, -0.30 * 10, 0, 1, 0),
+                    resample=Image.BICUBIC)
+sub = sub.crop(sub.getbbox())
+fit_w = min(CW - 8, sub.width)
+fit_h = round(sub.height * fit_w / sub.width)
+sub = sub.resize((fit_w, fit_h), Image.LANCZOS)
+img.paste(sub, ((W - fit_w) // 2, 131), sub)
+dr = ImageDraw.Draw(img, "RGBA")
 
-# ============================================================ numbers strip
-NUMBERS = [
-    ("2", "PATRIOT RADARS · BAHRAIN"),
-    ("05:42", "WIB · COALITION CONFIRMS"),
-    ("M4.1", "MYANMAR · 95 KM DEEP"),
-    ("720/9", "INDIA TEST TOTAL"),
-    ("50", "LAPS · LAS VEGAS GP"),
-    ("$4m", "LPGA RECORD PRIZE"),
-    ("11", "NFL SUNDAY GAMES"),
+# ------------------------------------------------------- numbers strip
+NUMS = [
+    ("2", "PATRIOT RADARS\nCLAIMED HIT · BAHRAIN"),
+    ("05:42", "WIB - COALITION\nCONFIRMS INTERCEPTION"),
+    ("M4.1", "MYANMAR QUAKE\n95 KM DEEP"),
+    ("720/9", "INDIA'S RECORD TEST\nTOTAL · WELLINGTON"),
+    ("50", "LAPS UNDER LIGHTS\nLAS VEGAS GP"),
+    ("$4m", "LPGA WINNER'S PRIZE\nWOMEN'S GOLF RECORD"),
+    ("11", "NFL GAMES SUNDAY\nWEEK 12 SLATE"),
 ]
-pen.line([(14, 149), (PAGE_W - 14, 149)], fill=REDC, width=3)
-fnum = F(BOLD, 34)
-fcap = F(BOLD, 8)
-cell = (PAGE_W - 28) / 7.0
-for i, (num, cap) in enumerate(NUMBERS):
-    cx = 14 + i * cell
-    pen.text((cx + (cell - tw(fnum, num)) / 2, 152), num, font=fnum, fill=REDC)
-    pen.text((cx + (cell - tw(fcap, cap)) / 2, 188), cap, font=fcap, fill=INKC)
+dr.line([(MX, 160), (W - MX, 160)], fill=RED, width=3)
+f_num = F(SANS_B, 34)
+f_cap = F(SANS_B, 9)
+cell = CW / 7.0
+for i, (num, cap) in enumerate(NUMS):
+    cx = MX + i * cell
+    dr.text((cx + (cell - tw(f_num, num)) / 2, 164), num, font=f_num, fill=RED)
+    for j, line in enumerate(cap.split("\n")):
+        dr.text((cx + (cell - tw(f_cap, line)) / 2, 202 + j * 11), line,
+                font=f_cap, fill=INK)
     if i:
-        pen.line([(cx, 154), (cx, 196)], fill=(214, 206, 184), width=1)
-DIGIT_PX = 34
+        dr.line([(cx, 166), (cx, 220)], fill=(214, 206, 184), width=1)
 
-# ============================================================ D10 tally
-# Counts per region across ALL 37 stories (pictured cards + briefs).
-TALLY = [
-    ("GULF", 5), ("ARABIA", 2), ("ASIA", 5), ("CLIMATE", 4),
-    ("OCEANIA", 5), ("EUROPE", 4), ("AMERICAS", 12),
+# (a) Region tally bar: 16 px, labels inside, widths proportional.
+TALLY = [("GULF", 5), ("ARABIA", 2), ("ASIA", 5), ("CLIMATE", 4),
+         ("OCEANIA", 7), ("EUROPE", 5), ("AMERICAS", 12)]
+TALLY_Y = 230
+tx = float(MX)
+for name, count in TALLY:
+    seg_w = CW * count / 40.0
+    dr.rectangle([tx, TALLY_Y, tx + seg_w - 1, TALLY_Y + 16],
+                 fill=REGIONS[name])
+    label = f"{name} {count}"
+    lf = F(SANS_B, 10)
+    if tw(lf, label) > seg_w - 6:
+        lf = F(SANS_B, 8)
+    dr.text((tx + (seg_w - tw(lf, label)) / 2, TALLY_Y + 3), label,
+            font=lf, fill=WHITE)
+    tx += seg_w
+
+# ------------------------------------------------- overnight timeline
+SLOTS = [
+    ("02:40 WIB", "IRGC claim · Bahrain"),
+    ("03:43 WIB", "Sirens · Mecca region"),
+    ("04:05 WIB", "Myanmar quake M4.1"),
+    ("05:42 WIB", "Interception confirmed"),
+    ("06:00 GMT", "COP31 plenary · Antalya"),
+    ("11:00 WIB", "Vegas GP lights out"),
 ]
-TALLY_TOTAL = sum(n for _n, n in TALLY)
-TALLY_Y, TALLY_H = 199, 16
-tx = 14.0
-ftally = F(BOLD, 9)
-for name, n in TALLY:
-    segw = (PAGE_W - 28) * n / TALLY_TOTAL
-    pen.rectangle([tx, TALLY_Y, tx + segw, TALLY_Y + TALLY_H], fill=REGIONS[name])
-    label = f"{name} {n}"
-    pen.text((tx + (segw - tw(ftally, label)) / 2, TALLY_Y + 3), label,
-             font=ftally, fill=WHITE)
-    tx += segw
-
-# ============================================================ lead scenes
-# D7/D12: ~110 px, flat vector, one gradient, max 3 large elements,
-# dominant subject >=70% of scene height. No in-scene text labels.
-
-def lead_gulf(x, y, w, h):
-    gradient(x, y, w, h, (14, 30, 62), (30, 74, 110))
-    starfield(x, y, w, h, 14, 4)
-    sea_y = y + h - 26
-    pen.rectangle([x, sea_y, x + w, y + h], fill=(10, 130, 150))
-    # element 1: GIANT orange burst, ~79 px tall = 72% of scene
-    burst(x + 222, y + 50, [(48, (216, 62, 10)), (37, (240, 110, 20)),
-                            (26, (248, 158, 32)), (15, (252, 200, 70))])
-    # element 2: burning plant silhouette under the burst
-    px = x + 176
-    pen.rectangle([px, sea_y - 14, px + 88, sea_y], fill=(8, 12, 20))
-    pen.rectangle([px + 10, sea_y - 23, px + 17, sea_y - 14], fill=(8, 12, 20))
-    # element 3: big radar dish, left foreground (74 px across, ~66 tall)
-    rx, ry = x + 52, sea_y - 2
-    pen.line([rx, ry, rx - 12, sea_y + 12], fill=(225, 228, 210), width=4)
-    pen.line([rx, ry, rx + 14, sea_y + 12], fill=(225, 228, 210), width=4)
-    pen.arc([rx - 37, ry - 52, rx + 37, ry + 22], start=300, end=130,
-            fill=(235, 238, 220), width=5)
-    pen.line([rx, ry - 14, rx + 28, ry - 36], fill=(235, 238, 220), width=3)
-    pen.ellipse([rx + 25, ry - 39, rx + 32, ry - 32], fill=(255, 214, 120))
+TY = 272
+dr.line([(30, TY), (W - 30, TY)], fill=NAVY, width=2)
+f_slot = F(SANS_B, 11)
+f_slotlab = F(SANS, 9)
+slot_w = (W - 60) / 6.0
+for i, (tm, lab) in enumerate(SLOTS):
+    cx = 30 + slot_w * i + slot_w / 2
+    dr.ellipse([cx - 5, TY - 5, cx + 5, TY + 5], fill=RED, outline=NAVY, width=1)
+    dr.text((cx - tw(f_slot, tm) / 2, TY - 19), tm, font=f_slot, fill=RED)
+    dr.text((cx - tw(f_slotlab, lab) / 2, TY + 9), lab, font=f_slotlab, fill=INK)
 
 
-def lead_mecca(x, y, w, h):
-    gradient(x, y, w, h, (12, 24, 52), (36, 58, 98))
-    starfield(x, y, w, h, 12, 9)
-    ground = y + h - 14
-    pen.rectangle([x, ground, x + w, y + h], fill=(10, 16, 28))
-    # element 1: GIANT golden burst, ~75 px tall = 68-72% of scene
-    burst(x + 200, y + 42, [(46, (198, 128, 16)), (35, (232, 168, 30)),
-                            (24, (250, 205, 80)), (13, (255, 232, 150))])
-    # missile trail into the burst (part of the burst element)
-    pts = [(x + 16 + i * 10, y + 80 - i * 4.4) for i in range(11)]
-    for i in range(0, len(pts) - 1, 2):
-        pen.line([pts[i], pts[i + 1]], fill=(240, 130, 90), width=3)
-    # element 2: BIG lit dome, ~80 px tall = 73% of scene
-    bx = x + 42
-    pen.rectangle([bx, ground - 24, bx + 118, ground], fill=(146, 96, 26))
-    pen.pieslice([bx + 8, ground - 80, bx + 110, ground - 20], 180, 360, fill=(226, 156, 44))
-    pen.pieslice([bx + 22, ground - 72, bx + 96, ground - 24], 180, 360, fill=(248, 196, 84))
-    pen.rectangle([bx + 55, ground - 90, bx + 63, ground - 76], fill=(226, 156, 44))
-    pen.ellipse([bx + 54, ground - 97, bx + 64, ground - 87], fill=(255, 240, 190))
-    for wx_ in range(4):
-        pen.rectangle([bx + 14 + wx_ * 26, ground - 17, bx + 22 + wx_ * 26, ground - 7],
-                      fill=(255, 226, 140))
-    # element 3: tall minaret, right
-    mx_ = x + 282
-    pen.rectangle([mx_, ground - 72, mx_ + 11, ground], fill=(16, 24, 40))
-    pen.polygon([(mx_ - 4, ground - 72), (mx_ + 15, ground - 72), (mx_ + 5, ground - 88)],
-                fill=(16, 24, 40))
-    pen.rectangle([mx_ - 5, ground - 55, mx_ + 16, ground - 50], fill=(255, 226, 140))
+# ---------------------------------------------------------------- scenes
+def frame(x, y, w, h):
+    dr.rectangle([x - 4, y - 4, x + w - 4, y + h - 4], fill=SHEET)
+    dr.rectangle([x + 6, y + 7, x + w + 6, y + h + 7], fill=SHADOW)
+    dr.rectangle([x, y, x + w, y + h], fill=CARD_BG, outline=INK, width=1)
 
 
-def lead_quake(x, y, w, h):
-    # element 1: dusk sky band + surface town
-    gradient(x, y, w, 20, (240, 130, 40), (250, 180, 70))
-    pen.rectangle([x, y + 20, x + w, y + 27], fill=(52, 130, 60))
-    for bx, bw, bh in [(x + 26, 30, 13), (x + 64, 20, 9), (x + 226, 34, 14), (x + 268, 22, 10)]:
-        pen.rectangle([bx, y + 20 - bh, bx + bw, y + 20], fill=(20, 30, 44))
-        pen.rectangle([bx + 4, y + 20 - bh + 3, bx + 9, y + 20 - bh + 7], fill=(255, 232, 150))
-    # element 2: COLOURED STRATA filling the underground (90 px = 82%)
-    strata = [(206, 106, 30), (168, 52, 138), (22, 138, 164), (86, 164, 56), (186, 52, 48)]
-    sy = y + 27
+def slug_bar(x, y, w, text, col, size=10):
+    dr.rectangle([x, y, x + w, y + 16], fill=col)
+    f = F(SANS_B, size)
+    while tw(f, text) > w - 14 and f.size > 7:
+        f = F(SANS_B, f.size - 1)
+    dr.text((x + 7, y + 3), text, font=f, fill=WHITE)
+
+
+def sc_gulf(x, y, w, h):
+    gradient(x, y, w, h, (16, 30, 54), (38, 66, 92))
+    starfield(x, y, w, h, 20, 3)
+    sea = y + h - 24
+    dr.rectangle([x, sea, x + w, y + h], fill=(24, 52, 74))
+    for i in range(5):
+        yy = sea + 6 + (i % 2) * 7
+        dr.line([x + 12 + i * 62, yy, x + 44 + i * 62, yy],
+                fill=(90, 140, 170), width=2)
+    # tanker, right foreground
+    tx0, ty0 = x + w - 116, sea - 11
+    dr.polygon([(tx0, ty0 + 7), (tx0 + 96, ty0 + 7), (tx0 + 84, ty0 + 15),
+                (tx0 + 10, ty0 + 15)], fill=(8, 12, 20))
+    dr.rectangle([tx0 + 16, ty0, tx0 + 30, ty0 + 7], fill=(8, 12, 20))
+    dr.rectangle([tx0 + 58, ty0 - 4, tx0 + 68, ty0 + 7], fill=(8, 12, 20))
+    # burning plant, centre
+    px = x + 128
+    dr.rectangle([px, sea - 20, px + 56, sea], fill=(10, 16, 26))
+    dr.rectangle([px + 8, sea - 31, px + 14, sea - 20], fill=(10, 16, 26))
+    for fx, fh in [(px + 28, 15), (px + 38, 10)]:
+        dr.polygon([(fx, sea - 20), (fx + 5, sea - 20 - fh), (fx + 10, sea - 20)],
+                   fill=(232, 120, 40))
+        dr.polygon([(fx + 2, sea - 20), (fx + 5, sea - 20 - fh + 5),
+                    (fx + 8, sea - 20)], fill=(245, 197, 24))
+    # radar dish, left foreground
+    rx, ry = x + 42, sea - 5
+    dr.line([rx, ry, rx - 8, sea + 7], fill=(210, 214, 200), width=3)
+    dr.line([rx, ry, rx + 10, sea + 7], fill=(210, 214, 200), width=3)
+    dr.arc([rx - 25, ry - 32, rx + 25, ry + 13], start=300, end=130,
+           fill=(225, 228, 210), width=4)
+    dr.line([rx, ry - 9, rx + 19, ry - 24], fill=(225, 228, 210), width=2)
+    # dashed missile arcs
+    for off in (0, 26):
+        pts = [(x + 14 + off + (t / 20) * 60, y + 5 + (t / 20) ** 1.6 * 42)
+               for t in range(21)]
+        for i in range(0, 20, 2):
+            dr.line([pts[i], pts[i + 1]], fill=(235, 90, 80), width=2)
+    burst(x + 78, y + 44, 9, (245, 197, 24))
+    f = F(SANS_B, 10)
+    pill(x + 8, y + 7, "2 RADARS CLAIMED", f, RED)
+    pill(x + 8, y + 29, "02:40 WIB", f, NAVY)
+
+
+def sc_mecca(x, y, w, h):
+    gradient(x, y, w, h, (14, 26, 50), (44, 62, 96))
+    starfield(x, y, w, h, 18, 11)
+    mx0, my0 = x + w - 54, y + 14
+    dr.ellipse([mx0, my0, mx0 + 30, my0 + 30], fill=(240, 230, 180))
+    dr.ellipse([mx0 + 10, my0 - 2, mx0 + 38, my0 + 28], fill=(22, 36, 60))
+    ground = y + h - 16
+    dr.rectangle([x, ground, x + w, y + h], fill=(10, 16, 28))
+    bx = x + 92
+    dr.rectangle([bx, ground - 18, bx + 92, ground], fill=(8, 12, 22))
+    dr.pieslice([bx + 16, ground - 40, bx + 76, ground - 6], 180, 360,
+                fill=(8, 12, 22))
+    dr.rectangle([bx + 43, ground - 48, bx + 49, ground - 36], fill=(8, 12, 22))
+    dr.ellipse([bx + 42, ground - 53, bx + 50, ground - 45], fill=(240, 230, 180))
+    tx0 = x + 214
+    dr.rectangle([tx0, ground - 54, tx0 + 9, ground], fill=(8, 12, 22))
+    dr.polygon([(tx0 - 3, ground - 54), (tx0 + 12, ground - 54),
+                (tx0 + 4, ground - 66)], fill=(8, 12, 22))
+    pts = [(x + 16 + i * 9, y + 50 - i * 3.2) for i in range(12)]
+    for i in range(0, 11, 2):
+        dr.line([pts[i], pts[i + 1]], fill=(235, 120, 90), width=2)
+    burst(pts[-1][0], pts[-1][1], 13, (245, 197, 24), spokes=12)
+    for r in (10, 17, 24):
+        dr.arc([bx + 132 - r, ground - 32 - r, bx + 132 + r, ground - 32 + r],
+               200, 320, fill=(120, 180, 220), width=2)
+    f = F(SANS_B, 10)
+    pill(x + 8, y + 7, "03:43 WIB SIRENS", f, NAVY)
+    pill(x + 8, y + 29, "05:42 WIB CONFIRMED", f, RED)
+
+
+def sc_quake(x, y, w, h):
+    dr.rectangle([x, y, x + w, y + 24], fill=(30, 52, 84))
+    starfield(x, y, w, 24, 10, 5)
+    dr.rectangle([x, y + 24, x + w, y + 32], fill=(96, 128, 74))
+    strata = [(146, 102, 64), (122, 84, 56), (96, 66, 48), (74, 52, 42)]
     for i, c in enumerate(strata):
-        pen.rectangle([x, sy + i * 17, x + w, sy + (i + 1) * 17], fill=c)
-    # element 3: epicentre rings + hypocentre star + depth line
-    cx = x + 138
+        dr.rectangle([x, y + 32 + i * 16, x + w, y + 32 + (i + 1) * 16], fill=c)
+    for bx, bw, bh in [(x + 28, 26, 11), (x + 60, 18, 8), (x + 208, 30, 12),
+                       (x + 246, 20, 9)]:
+        dr.rectangle([bx, y + 24 - bh, bx + bw, y + 24], fill=(14, 22, 34))
+    cx, cy = x + 138, y + 28
     for r in (8, 16, 25):
-        pen.ellipse([cx - r, y + 23 - r // 2, cx + r, y + 23 + r // 2],
-                    outline=(255, 246, 200), width=2)
-    hx, hy = cx, y + h - 13
-    for a in range(0, 360, 45):
-        pen.line([hx, hy, hx + 11 * math.cos(math.radians(a)), hy + 11 * math.sin(math.radians(a))],
-                 fill=(255, 240, 170), width=3)
-    pen.line([cx, y + 27, hx, hy - 9], fill=(255, 246, 200), width=2)
-    gx = x + w - 36
-    pen.rectangle([gx, y + 29, gx + 9, y + h - 5], fill=(240, 236, 214), outline=INKC, width=1)
-    pen.rectangle([gx, y + h - 20, gx + 9, y + h - 5], fill=REDC)
+        dr.ellipse([cx - r, cy - r // 2, cx + r, cy + r // 2],
+                   outline=(245, 197, 24), width=2)
+    hx, hy = x + 138, y + h - 24
+    burst(hx, hy, 10, (245, 150, 60), spokes=8)
+    dr.line([cx, cy + 4, hx, hy - 9], fill=(245, 197, 24), width=2)
+    gx = x + w - 38
+    dr.rectangle([gx, y + 34, gx + 8, y + h - 6], fill=(230, 226, 205),
+                 outline=INK, width=1)
+    dr.rectangle([gx, y + h - 18, gx + 8, y + h - 6], fill=RED)
+    f = F(SANS_B, 10)
+    pill(x + 8, y + 5, "M4.1 · 04:05 WIB", f, RED)
+    pill(x + w - 94, y + 5, "95 KM DEEP", f, NAVY)
 
 
+# ------------------------------------------------------------- lead cards
 LEADS = [
-    dict(n=1, reg="GULF", scene=lead_gulf,
-         slug="BAHRAIN: 2 PATRIOT RADARS CLAIMED",
-         caption="1 · BAHRAIN · GULF",
+    dict(n=1, region="GULF", scene=sc_gulf,
+         slug="BAHRAIN: 2 RADARS CLAIMED",
+         caption="1 · BAHRAIN · GULF", tag="CLAIM · IRGC",
          head=LEAD_HEADS[0],
-         deck="Tehran says it hit 2 Patriot sites (Al-Riffa, Awali); a Bahrain "
-              "plant burned and a drone fell over Kuwait.",
-         source="IRGC · Bahrain ministry", facts=4,
-         subject_pct=72),
-    dict(n=2, reg="ARABIA", scene=lead_mecca,
+         deck="Tehran says its missile-and-drone strike hit 2 US Patriot "
+              "radar sites (Al-Riffa, Awali); a drone fell over Kuwait."),
+    dict(n=2, region="ARABIA", scene=sc_mecca,
          slug="MECCA REGION: MISSILE INTERCEPTED",
-         caption="2 · MECCA REGION · ARABIA",
+         caption="2 · MECCA REGION · ARABIA", tag="CONFIRMED · ANADOLU",
          head=LEAD_HEADS[1],
-         deck="Sirens sounded at 03:43 WIB; at 05:42 WIB the coalition "
-              "confirmed the Houthi missile was intercepted.",
-         source="Anadolu · coalition", facts=3,
-         subject_pct=73),
-    dict(n=3, reg="ASIA", scene=lead_quake,
-         slug="MYANMAR: M4.1 AT 95 KM DEEP",
-         caption="3 · MYANMAR · ASIA",
+         deck="Sirens sounded across the Mecca region at 03:43 WIB; at "
+              "05:42 WIB the coalition confirmed the Houthi missile "
+              "was intercepted."),
+    dict(n=3, region="ASIA", scene=sc_quake,
+         slug="MYANMAR: M4.1 · 95 KM DEEP",
+         caption="3 · MYANMAR · ASIA", tag="NCS · ANI",
          head=LEAD_HEADS[2],
-         deck="NCS logged it at 04:05 WIB — 24.404N, 94.616E, 95 km down: "
-              "deep enough to pass almost unfelt.",
-         source="NCS India · ANI", facts=4,
-         subject_pct=82),
+         deck="India's NCS logged it at 04:05 WIB: magnitude 4.1, 95 km "
+              "down, at 24.404N, 94.616E - a deep shock under Myanmar's "
+              "north-west."),
 ]
-
-LEAD_Y, LEAD_SLUG_H, LEAD_SCENE_H, LEAD_W, LEAD_CARD_H = 219, 20, 110, 324, 220
-fslug_lead = F(BOLD, 12)
+LEAD_Y, LEAD_H, LEAD_SCENE = 300, 224, 98
 for L, lx in zip(LEADS, [14, 350, 686]):
-    col = REGIONS[L["reg"]]
-    sheet(lx, LEAD_Y, LEAD_W, LEAD_CARD_H)
-    # D1 slug bar (20 px), region colour, white bold caps
-    pen.rectangle([lx + 1, LEAD_Y + 1, lx + LEAD_W - 1, LEAD_Y + 1 + LEAD_SLUG_H], fill=col)
-    pen.text((lx + 9, LEAD_Y + 5), L["slug"], font=fslug_lead, fill=WHITE)
-    sy = LEAD_Y + 1 + LEAD_SLUG_H
-    L["scene"](lx + 1, sy, LEAD_W - 2, LEAD_SCENE_H)
-    badge(lx + LEAD_W - 1, sy + LEAD_SCENE_H, L["n"], col)
-    # D11 numbered coloured caption under the scene; source right-aligned
-    # on the same line (plain source tag, no chip).
-    cap_y = sy + LEAD_SCENE_H + 4
-    pen.text((lx + 10, cap_y), L["caption"], font=F(BOLD, 10), fill=col)
-    fs = F(MED, 9)
-    pen.text((lx + LEAD_W - 10 - tw(fs, L["source"]), cap_y + 1), L["source"],
-             font=fs, fill=GREYC)
-    fh = F(SERIF, 18)
-    hy = sy + LEAD_SCENE_H + 17
-    for line in wrap_to(fh, L["head"], LEAD_W - 20)[:2]:
-        pen.text((lx + 10, hy), line, font=fh, fill=INKC)
-        hy += 19
-    fd = F(MED, 11)
-    for line in wrap_to(fd, L["deck"], LEAD_W - 20)[:2]:
-        pen.text((lx + 10, hy + 2), line, font=fd, fill=(52, 48, 40))
-        hy += 13
-
-# ============================================================ mini scenes
-# D2/D12: full-bleed coloured field edge-to-edge, ±45 px, flat vector,
-# max 3 large elements, in-scene labels only >=14 px.
-
-def sc_screen(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.25), col)
-    pen.rectangle([x + 8, y + 5, x + 92, y + h - 5], fill=(8, 40, 52))
-    pen.rectangle([x + 12, y + 9, x + 88, y + h - 9], fill=(120, 235, 245))
-    pen.rectangle([x + 18, y + 15, x + 58, y + 20], fill=(8, 90, 110))
-    pen.rectangle([x + 18, y + 25, x + 74, y + 30], fill=(8, 90, 110))
-    cx, cy, r = x + 128, y + h // 2, 17
-    pen.ellipse([cx - r, cy - r, cx + r, cy + r], fill=WHITE, outline=NAVYC, width=2)
-    pen.line([cx, cy, cx, cy - 11], fill=INKC, width=2)
-    pen.line([cx, cy, cx + 8, cy + 4], fill=REDC, width=2)
+    lw_ = 324
+    col = REGIONS[L["region"]]
+    frame(lx, LEAD_Y, lw_, LEAD_H)
+    slug_bar(lx + 1, LEAD_Y + 1, lw_ - 2, L["slug"], col, size=11)
+    L["scene"](lx + 1, LEAD_Y + 17, lw_ - 2, LEAD_SCENE)
+    badge(lx + lw_ - 16, LEAD_Y + 17 + LEAD_SCENE - 14, L["n"], col)
+    cy = LEAD_Y + 17 + LEAD_SCENE + 3
+    spaced(lx + 10, cy, L["caption"], F(SANS_B, 10), col, 1)
+    tf = F(SANS_B, 9)
+    spaced(lx + lw_ - spaced_w(tf, L["tag"], 1) - 10, cy, L["tag"], tf, GREY, 1)
+    fh = F(SERIF, 19)
+    hy = cy + 17
+    for line in wrap(fh, L["head"], lw_ - 20)[:2]:
+        dr.text((lx + 10, hy), line, font=fh, fill=INK)
+        hy += 22
+    fd = F(SANS, 12)
+    for line in wrap(fd, L["deck"], lw_ - 20)[:3]:
+        dr.text((lx + 10, hy + 2), line, font=fd, fill=(52, 48, 40))
+        hy += 14
 
 
-def sc_score(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.2), col)
-    pen.rectangle([x + 8, y + 7, x + 118, y + 17], fill=(255, 240, 200))
-    pen.rectangle([x + 8, y + 27, x + 66, y + 37], fill=(60, 60, 60))
-    pen.text((x + 122, y + 4), "720", font=F(BOLD, 15), fill=WHITE)
+# ------------------------------------------------------------ mini strips
+def st_clock(x, y, w, h):
+    dr.rectangle([x, y, x + w, y + h], fill=(30, 122, 128))
+    cx, cy, r = x + 24, y + h // 2, 12
+    dr.ellipse([cx - r, cy - r, cx + r, cy + r], fill=WHITE, outline=NAVY, width=2)
+    dr.line([cx, cy, cx, cy - 8], fill=INK, width=2)
+    dr.line([cx, cy, cx + 6, cy + 3], fill=RED, width=2)
+    dr.text((x + 46, y + 10), "06:00 GMT PLENARY", font=F(SANS_B, 11), fill=WHITE)
 
 
-def sc_circuit(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.25), col)
-    pts = [(x + 12 + i * 13, y + h // 2 + int(13 * math.sin(i * 1.55))) for i in range(8)]
-    pen.line(pts, fill=(255, 240, 170), width=4)
-    pen.text((x + 116, y + 4), "50", font=F(BOLD, 16), fill=WHITE)
+def st_bars(x, y, w, h):
+    dr.rectangle([x, y, x + w, y + h], fill=(238, 226, 200))
+    dr.rectangle([x + 10, y + 6, x + 116, y + 13], fill=(146, 92, 32))
+    dr.rectangle([x + 10, y + 20, x + 64, y + 27], fill=(90, 90, 90))
+    dr.text((x + 120, y + 2), "720", font=F(SANS_B, 11), fill=INK)
+    dr.text((x + 68, y + 16), "368", font=F(SANS_B, 11), fill=INK)
 
 
-def sc_rocket(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.15), col)
-    starfield(x, y, w, h, 7, 31)
-    rx = x + 36
-    pen.polygon([(rx, y + 2), (rx + 8, y + 11), (rx + 8, y + 29), (rx - 8, y + 29),
-                 (rx - 8, y + 11)], fill=(240, 240, 234))
-    pen.polygon([(rx - 8, y + 29), (rx - 15, y + 37), (rx - 8, y + 37)], fill=REDC)
-    pen.polygon([(rx + 8, y + 29), (rx + 15, y + 37), (rx + 8, y + 37)], fill=REDC)
-    pen.polygon([(rx - 4, y + 37), (rx + 4, y + 37), (rx, y + 45)], fill=(250, 170, 60))
-    pen.text((x + 62, y + 27), "GO", font=F(BOLD, 15), fill=WHITE)
+def st_track(x, y, w, h):
+    dr.rectangle([x, y, x + w, y + h], fill=(30, 30, 44))
+    pts = [(x + 14 + 15 * math.sin(i * 0.9) + i * 8, y + 16 + 9 * math.sin(i * 1.7))
+           for i in range(11)]
+    dr.line(pts, fill=(240, 230, 170), width=2)
+    dr.text((x + 112, y + 9), "50 LAPS", font=F(SANS_B, 11), fill=(245, 197, 24))
 
 
-def sc_pitch(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.2), col)
-    pen.rectangle([x + 7, y + 4, x + 104, y + h - 4], outline=WHITE, width=2)
-    pen.line([x + 55, y + 4, x + 55, y + h - 4], fill=WHITE, width=2)
-    pen.ellipse([x + 43, y + h // 2 - 12, x + 67, y + h // 2 + 12], outline=WHITE, width=2)
+def st_rocket(x, y, w, h):
+    gradient(x, y, w, h, (18, 34, 66), (52, 84, 128))
+    starfield(x, y, w, h, 9, 21)
+    rx = x + 28
+    dr.polygon([(rx, y + 3), (rx + 7, y + 11), (rx + 7, y + 22),
+                (rx - 7, y + 22), (rx - 7, y + 11)], fill=(235, 235, 228))
+    dr.polygon([(rx - 7, y + 22), (rx - 12, y + 28), (rx - 7, y + 28)], fill=RED)
+    dr.polygon([(rx + 7, y + 22), (rx + 12, y + 28), (rx + 7, y + 28)], fill=RED)
+    dr.polygon([(rx - 3, y + 28), (rx + 3, y + 28), (rx, y + 34)],
+               fill=(245, 160, 60))
+    dr.text((x + 52, y + 9), "GO · 12:16 UTC", font=F(SANS_B, 11), fill=WHITE)
 
 
-def sc_court(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.2), col)
-    pen.rectangle([x + 7, y + 4, x + 100, y + h - 4], outline=WHITE, width=2)
-    pen.line([x + 53, y + 4, x + 53, y + h - 4], fill=WHITE, width=2)
-    pen.line([x + 7, y + h // 2, x + 100, y + h // 2], fill=WHITE, width=2)
-    pen.ellipse([x + 112, y + 24, x + 130, y + 42], fill=(215, 235, 90), outline=INKC, width=1)
+def st_pitch(x, y, w, h):
+    dr.rectangle([x, y, x + w, y + h], fill=(52, 128, 74))
+    dr.rectangle([x + 6, y + 4, x + 84, y + h - 4], outline=WHITE, width=1)
+    dr.line([x + 45, y + 4, x + 45, y + h - 4], fill=WHITE, width=1)
+    dr.ellipse([x + 37, y + h // 2 - 8, x + 53, y + h // 2 + 8], outline=WHITE, width=1)
+    dr.text((x + 94, y + 9), "16:30 UTC", font=F(SANS_B, 11), fill=WHITE)
 
 
-def sc_board(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.2), col)
-    pen.text((x + 8, y + 4), "KIM -18", font=F(BOLD, 14), fill=WHITE)
-    pen.rectangle([x + 8, y + 26, x + 96, y + 34], fill=(255, 240, 190))
-    pen.rectangle([x + 8, y + 38, x + 88, y + 44], fill=(255, 240, 190))
-    pen.text((x + 104, y + 25), "-17", font=F(BOLD, 14), fill=WHITE)
+def st_court(x, y, w, h):
+    dr.rectangle([x, y, x + w, y + h], fill=(52, 92, 150))
+    dr.rectangle([x + 8, y + 5, x + 76, y + h - 5], outline=WHITE, width=1)
+    dr.line([x + 42, y + 5, x + 42, y + h - 5], fill=WHITE, width=1)
+    dr.line([x + 8, y + h // 2, x + 76, y + h // 2], fill=WHITE, width=1)
+    dr.text((x + 86, y + 9), "FINAL · TURIN", font=F(SANS_B, 11), fill=WHITE)
 
 
-def sc_ring(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.2), col)
-    cx, cy = x + 48, y + h // 2
-    pen.ellipse([cx - 34, cy - 19, cx + 34, cy + 19], fill=(238, 220, 178),
-                outline=(120, 88, 40), width=3)
-    pen.line([cx - 14, cy, cx + 14, cy], fill=(120, 88, 40), width=3)
-    pen.text((x + 92, y + 26), "12-2", font=F(BOLD, 14), fill=WHITE)
+def st_board(x, y, w, h):
+    dr.rectangle([x, y, x + w, y + h], fill=(224, 238, 224))
+    rows = [("KIM", "-18", 60), ("THITIKUL", "-17", 48), ("YOSHIDA", "-17", 48)]
+    for i, (nm, sc, bw) in enumerate(rows):
+        yy = y + 4 + i * 10
+        dr.text((x + 26, yy), nm, font=F(SANS_B, 8), fill=INK)
+        bx = x + 74
+        dr.rectangle([bx, yy + 1, bx + bw // 2, yy + 7], fill=(60, 130, 70))
+        dr.text((bx + bw // 2 + 5, yy), sc, font=F(SANS_B, 8), fill=RED)
 
 
-def sc_rain(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.25), col)
+def st_dohyo(x, y, w, h):
+    dr.rectangle([x, y, x + w, y + h], fill=(226, 208, 178))
+    cx, cy = x + 32, y + h // 2
+    dr.ellipse([cx - 16, cy - 12, cx + 16, cy + 12], fill=(214, 192, 150),
+               outline=(120, 90, 50), width=2)
+    dr.line([cx - 8, cy, cx + 8, cy], fill=(120, 90, 50), width=2)
+    dr.text((x + 58, y + 9), "12-2 x2 LEAD", font=F(SANS_B, 11), fill=INK)
+
+
+def st_rain(x, y, w, h):
+    dr.rectangle([x, y, x + w, y + h], fill=(196, 214, 226))
     for i in range(9):
-        rx = x + 10 + i * 11
-        pen.line([rx, y + 5, rx - 4, y + 18], fill=(210, 235, 255), width=3)
-        pen.line([rx, y + 26, rx - 4, y + 39], fill=(210, 235, 255), width=3)
-    pen.text((x + 112, y + 26), "-9", font=F(BOLD, 15), fill=WHITE)
+        rx = x + 8 + i * 10
+        dr.line([rx, y + 4, rx - 3, y + 13], fill=(70, 110, 150), width=2)
+    dr.text((x + 6, y + 18), "-9 x3 CO-LEAD", font=F(SANS_B, 9), fill=NAVY)
+    dr.text((x + 104, y + 5), "SAT RAINED OUT", font=F(SANS_B, 9), fill=INK)
 
 
-def sc_dots(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.2), col)
+def st_nfl(x, y, w, h):
+    dr.rectangle([x, y, x + w, y + h], fill=(36, 44, 84))
     for r in range(2):
         for c in range(6):
             if r * 6 + c < 11:
-                cx, cy = x + 18 + c * 15, y + 12 + r * 21
-                pen.ellipse([cx - 6, cy - 6, cx + 6, cy + 6], fill=(250, 236, 170))
-    pen.text((x + 116, y + 26), "11", font=F(BOLD, 15), fill=WHITE)
-
-
-def sc_flames(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.15), col)
-    pen.rectangle([x + 14, y + 28, x + 120, y + h], fill=(10, 16, 26))
-    pen.rectangle([x + 26, y + 18, x + 34, y + 28], fill=(10, 16, 26))
-    for fx, fh_ in [(30, 20), (58, 27), (88, 18)]:
-        pen.polygon([(x + fx - 9, y + 30), (x + fx, y + 30 - fh_), (x + fx + 9, y + 30)],
-                    fill=(245, 130, 30))
-        pen.polygon([(x + fx - 4, y + 30), (x + fx, y + 30 - fh_ + 8), (x + fx + 4, y + 30)],
-                    fill=(252, 200, 70))
-
-
-def sc_un(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.25), col)
-    pen.rectangle([x + 30, y + 12, x + 130, y + h], fill=(235, 232, 220))
-    pen.rectangle([x + 22, y + 6, x + 138, y + 12], fill=(200, 196, 182))
-    for i in range(5):
-        pen.rectangle([x + 40 + i * 18, y + 18, x + 48 + i * 18, y + h - 4], fill=col)
-
-
-def sc_drone(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.2), col)
-    cx, cy = x + 62, y + h // 2
-    pen.line([cx - 26, cy - 12, cx + 26, cy + 12], fill=WHITE, width=4)
-    pen.line([cx - 26, cy + 12, cx + 26, cy - 12], fill=WHITE, width=4)
-    for dx, dy in [(-26, -12), (26, 12), (-26, 12), (26, -12)]:
-        pen.ellipse([cx + dx - 8, cy + dy - 5, cx + dx + 8, cy + dy + 5], outline=WHITE, width=3)
-    pen.ellipse([cx - 7, cy - 7, cx + 7, cy + 7], fill=REDC)
-
-
-def sc_tanker(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.25), col)
-    pen.rectangle([x, y + h - 12, x + w, y + h], fill=(12, 90, 130))
-    pen.polygon([(x + 18, y + 26), (x + 128, y + 26), (x + 118, y + 36), (x + 28, y + 36)],
-                fill=(30, 34, 44))
-    pen.rectangle([x + 34, y + 18, x + 104, y + 26], fill=(196, 60, 40))
-    pen.rectangle([x + 112, y + 10, x + 122, y + 26], fill=(30, 34, 44))
-
-
-def sc_sirens(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.1), col)
-    pen.ellipse([x + 14, y + 6, x + 44, y + 36], fill=(250, 240, 200))
-    pen.ellipse([x + 24, y + 4, x + 52, y + 34], fill=lighten(col, 0.1))
-    for r in (14, 22, 30):
-        pen.arc([x + 108 - r, y + h // 2 - r, x + 108 + r, y + h // 2 + r],
-                start=300, end=60, fill=(255, 220, 120), width=4)
-
-
-def sc_clock(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.2), col)
-    cx, cy, r = x + 40, y + h // 2, 19
-    pen.ellipse([cx - r, cy - r, cx + r, cy + r], fill=WHITE, outline=NAVYC, width=2)
-    pen.line([cx, cy, cx, cy - 13], fill=INKC, width=3)
-    pen.line([cx, cy, cx + 10, cy + 6], fill=REDC, width=3)
-    pen.text((x + 70, y + 25), "02:35", font=F(BOLD, 14), fill=WHITE)
-
-
-def sc_target(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.2), col)
-    pen.rectangle([x + 12, y + 30, x + 60, y + 38], fill=(255, 240, 190))
-    pen.rectangle([x + 12, y + 16, x + 88, y + 24], fill=(255, 240, 190))
-    pen.text((x + 96, y + 4), "$120bn", font=F(BOLD, 14), fill=WHITE)
-
-
-def sc_bars(x, y, w, h, col):
-    gradient(x, y, w, h, lighten(col, 0.2), col)
-    for i, (lab, bw) in enumerate([("98", 96), ("85", 82), ("80", 76)]):
-        yy = y + 5 + i * 14
-        pen.rectangle([x + 8, yy, x + 8 + bw, yy + 9], fill=(255, 240, 190))
-        pen.text((x + 12 + bw, yy - 2), lab, font=F(BOLD, 14), fill=WHITE)
+                cx, cy = x + 12 + c * 13, y + 9 + r * 13
+                dr.ellipse([cx - 4, cy - 4, cx + 4, cy + 4], fill=(240, 230, 170))
+    dr.text((x + 100, y + 9), "11 GAMES", font=F(SANS_B, 11), fill=(245, 197, 24))
 
 
 MINIS = [
-    dict(n=4, reg="CLIMATE", dev=sc_screen, slug="ANTALYA · 06:00 PLENARY",
-         head="COP31 text tabled; plenary 06:00 GMT",
-         source="CLIMATE · Reuters", facts=3),
-    dict(n=5, reg="OCEANIA", dev=sc_score, slug="WELLINGTON: 720/9 RECORD",
-         head="India declare 720/9; Rahul 136, Pant 128",
-         source="OCEANIA · IANS · AFP", facts=4),
-    dict(n=6, reg="AMERICAS", dev=sc_circuit, slug="LAS VEGAS: 50 LAPS",
-         head="Vegas GP lights out 11:00 WIB, round 22",
-         source="AMERICAS · F1", facts=3),
-    dict(n=7, reg="AMERICAS", dev=sc_rocket, slug="VANDENBERG: GO 12:16",
-         head="Falcon 9 NROL-136 GO; B1097 to LZ4",
-         source="AMERICAS · VSFB", facts=3),
-    dict(n=8, reg="EUROPE", dev=sc_pitch, slug="ANFIELD: 16:30 UTC",
-         head="Liverpool host Man United, week 11",
-         source="EUROPE · Premier League", facts=2),
-    dict(n=9, reg="EUROPE", dev=sc_court, slug="TURIN: FINAL TONIGHT",
-         head="Alcaraz v Zverev final ~16:00 UTC",
-         source="EUROPE · Reuters", facts=2),
-    dict(n=10, reg="AMERICAS", dev=sc_board, slug="FLORIDA: $4M PRIZE",
-         head="Kim -18 leads CME; Thitikul -17",
-         source="AMERICAS · LPGA · AP", facts=3),
-    dict(n=11, reg="ASIA", dev=sc_ring, slug="FUKUOKA: 12-2 LEADERS",
-         head="Final day: Onosato, Wakamotoharu 12-2",
-         source="ASIA · JSA", facts=3),
-    dict(n=12, reg="AMERICAS", dev=sc_rain, slug="RSM: THREE TIED -9",
-         head="Rain pushes RSM finish to Monday",
-         source="AMERICAS · Reuters", facts=2),
-    dict(n=13, reg="AMERICAS", dev=sc_dots, slug="NFL: 11 SUNDAY GAMES",
-         head="Week 12: 11 games, Vikings @ 49ers late",
-         source="AMERICAS · ESPN · NFL", facts=3),
-    dict(n=14, reg="GULF", dev=sc_flames, slug="BAHRAIN: FIRES 23:25",
-         head="Fires reported 23:25 local, ministry says",
-         source="GULF · Bahrain ministry", facts=2),
-    dict(n=15, reg="GULF", dev=sc_un, slug="BAHRAIN: UN 2817",
-         head="Bahrain asks UN to enforce Res. 2817",
-         source="GULF · UN Council", facts=2),
-    dict(n=16, reg="GULF", dev=sc_drone, slug="KUWAIT: DRONE DOWN",
-         head="Drone at Ali Al Salem, first since Sept",
-         source="GULF · Kuwait reports", facts=2),
-    dict(n=17, reg="GULF", dev=sc_tanker, slug="HORMUZ: TANKER HIT",
-         head="Tanker hit Sat 11:27 UTC, UKMTO says",
-         source="GULF · UKMTO", facts=2),
-    dict(n=18, reg="ARABIA", dev=sc_sirens, slug="MECCA: SIRENS 23:43",
-         head="Sirens 23:43 Riyadh time, Saturday",
-         source="ARABIA · Riyadh reports", facts=2),
-    dict(n=19, reg="ASIA", dev=sc_clock, slug="MYANMAR: 02:35 IST",
-         head="NCS clocks M4.1 shock at 02:35:57 IST",
-         source="ASIA · NCS India", facts=2),
-    dict(n=20, reg="CLIMATE", dev=sc_target, slug="COP31: $120BN FELL",
-         head="$120bn target fell in Antalya talks Thu",
-         source="CLIMATE · COP31 talks", facts=2),
-    dict(n=21, reg="OCEANIA", dev=sc_bars, slug="WELLINGTON: GILL 98",
-         head="Gill 98, Jaiswal 85, Padikkal 80",
-         source="OCEANIA · Scorecard", facts=3),
+    dict(n=4, region="CLIMATE", strip=st_clock, tag="REUTERS",
+         slug="ANTALYA COP31: FINAL TEXT TABLED",
+         head="COP31 final text tabled, Antalya",
+         deck="Kurum tables the final package late; objections close "
+              "03:00 GMT, approval set 06:00 GMT."),
+    dict(n=5, region="OCEANIA", strip=st_bars, tag="IANS · AFP",
+         slug="WELLINGTON: INDIA 720/9",
+         head="India declare on 720/9, a NZ record",
+         deck="Rahul 136, Pant 128; NZ made 368 (Nicholls 175) - "
+              "India lead by 352."),
+    dict(n=6, region="AMERICAS", strip=st_track, tag="FORMULA1.COM",
+         slug="LAS VEGAS GP: 50 LAPS",
+         head="Las Vegas GP: lights out 11:00 WIB",
+         deck="Round 22 on the Strip Circuit: 50 laps from 04:00 UTC Sunday."),
+    dict(n=7, region="AMERICAS", strip=st_rocket, tag="OFFICIAL · VSFB",
+         slug="VANDENBERG: FALCON 9 · 12:16 UTC",
+         head="Falcon 9 NROL-136 set for Vandenberg",
+         deck="Window 12:16-12:46 UTC, status GO; 15th NRO batch, "
+              "booster B1097 lands LZ4."),
+    dict(n=8, region="EUROPE", strip=st_pitch, tag="PREMIERLEAGUE.COM",
+         slug="ANFIELD: LIVERPOOL v MAN UTD",
+         head="Liverpool host Man United, Anfield",
+         deck="Matchweek 11: Anfield 16:30 UTC (23:30 WIB); Hull v "
+              "Brighton 14:00 UTC."),
+    dict(n=9, region="EUROPE", strip=st_court, tag="ATP · REUTERS",
+         slug="TURIN FINAL: ALCARAZ v ZVEREV",
+         head="Alcaraz v Zverev: Turin final tonight",
+         deck="Final ~16:00 UTC Sunday; Alcaraz came back past Shelton "
+              "to reach it."),
+    dict(n=10, region="AMERICAS", strip=st_board, tag="LPGA · AP",
+         slug="NAPLES LPGA: $4M PRIZE",
+         head="Kim leads CME finale by one, Naples",
+         deck="A Lim Kim -18 at Tiburon; winner takes $4m, women's "
+              "golf's biggest prize."),
+    dict(n=11, region="ASIA", strip=st_dohyo, tag="JSA · DAY 14",
+         slug="FUKUOKA SUMO: 12-2 LEADERS",
+         head="Kyushu basho: final day in Fukuoka",
+         deck="Onosato & Wakamotoharu 12-2, Atamifuji 11-3; last bout "
+              "~09:00 UTC."),
+    dict(n=12, region="AMERICAS", strip=st_rain, tag="REUTERS",
+         slug="RSM CLASSIC: -9 CO-LEADERS",
+         head="RSM round 3 washed into Sunday",
+         deck="Three share -9: Thorbjornsen, Penge, Neergaard-Petersen; "
+              "final now Monday."),
+    dict(n=13, region="AMERICAS", strip=st_nfl, tag="ESPN · NFL",
+         slug="NFL WEEK 12: 11 GAMES",
+         head="NFL Week 12: 11 Sunday games",
+         deck="Early window 18:00 UTC; night game Vikings @ 49ers, "
+              "20:20 ET."),
 ]
-
-pen.text((14, 445), "MORE FROM THE NIGHT · STORIES 4–21", font=F(BOLD, 11), fill=REDC)
-MINI_W, MINI_H, MINI_SLUG_H, MINI_SCENE_H = 159, 103, 15, 45
-MINI_Y, MINI_PITCH = 457, 103
-fslug_mini = F(BOLD, 10)
+MINI_W, MINI_H, STRIP_H = 191, 132, 34
+f_tag = F(SANS_B, 8)
 for idx, M in enumerate(MINIS):
-    mx = 14 + (idx % 6) * 167
-    my = MINI_Y + (idx // 6) * MINI_PITCH
-    col = REGIONS[M["reg"]]
-    sheet(mx, my, MINI_W, MINI_H)
-    pen.rectangle([mx + 1, my + 1, mx + MINI_W - 1, my + 1 + MINI_SLUG_H], fill=col)
-    pen.text((mx + 6, my + 4), M["slug"], font=fslug_mini, fill=WHITE)
-    sy = my + 1 + MINI_SLUG_H
-    M["dev"](mx + 1, sy, MINI_W - 2, MINI_SCENE_H, col)
-    badge(mx + MINI_W - 1, sy + MINI_SCENE_H, M["n"], col)
-    fh = F(SERIF, 13)
-    hy = sy + MINI_SCENE_H + 1
-    for line in wrap_to(fh, M["head"], MINI_W - 14)[:2]:
-        pen.text((mx + 7, hy), line, font=fh, fill=INKC)
-        hy += 12
-    pen.text((mx + 7, my + MINI_H - 10), M["source"], font=F(MED, 9), fill=GREYC)
-
-# ============================================================ bottom zone
-BOT_HDR_Y = 772
-ftitle = F(BOLD, 11)
-pen.text((14, BOT_HDR_Y), "WHERE IT HAPPENED · ALL 37 STORIES, PINNED BY NUMBER",
-         font=ftitle, fill=NAVYC)
-pen.text((530, BOT_HDR_Y), "ALSO ON THE NIGHT · STORIES 22–37", font=ftitle, fill=NAVYC)
-
-BRIEF_REGIONS = {
-    22: "ASIA", 23: "ASIA", 24: "CLIMATE", 25: "CLIMATE", 26: "OCEANIA",
-    27: "OCEANIA", 28: "OCEANIA", 29: "EUROPE", 30: "EUROPE",
-    31: "AMERICAS", 32: "AMERICAS", 33: "AMERICAS", 34: "AMERICAS",
-    35: "AMERICAS", 36: "AMERICAS", 37: "AMERICAS",
-}
-
-MAP_BOX = (14, 786, 500, 198)
-mx0, my0, mw, mh = MAP_BOX
-pen.rectangle([mx0, my0, mx0 + mw, my0 + mh], fill=(205, 225, 235), outline=INKC, width=1)
+    mx = 14 + (idx % 5) * 201
+    my = 530 + (idx // 5) * 138
+    col = REGIONS[M["region"]]
+    frame(mx, my, MINI_W, MINI_H)
+    slug_bar(mx + 1, my + 1, MINI_W - 2, M["slug"], col, size=9)
+    M["strip"](mx + 1, my + 17, MINI_W - 2, STRIP_H)
+    badge(mx + 13, my + 17 + STRIP_H - 11, M["n"], col, dia=15)
+    tag_w = int(tw(f_tag, M["tag"])) + 8
+    dr.rectangle([mx + MINI_W - tag_w - 3, my + 17 + STRIP_H - 13,
+                  mx + MINI_W - 3, my + 17 + STRIP_H - 1], fill=NAVY)
+    dr.text((mx + MINI_W - tag_w + 1, my + 17 + STRIP_H - 11), M["tag"],
+            font=f_tag, fill=WHITE)
+    fh = F(SANS_B, 13)
+    hy = my + 17 + STRIP_H + 6
+    for line in wrap(fh, M["head"], MINI_W - 16)[:2]:
+        dr.text((mx + 8, hy), line, font=fh, fill=INK)
+        hy += 16
+    fd = F(SANS, 11)
+    for line in wrap(fd, M["deck"], MINI_W - 16)[:3]:
+        dr.text((mx + 8, hy + 1), line, font=fd, fill=(52, 48, 40))
+        hy += 13
 
 
-def project(lon, lat):
-    return (mx0 + (lon + 180) / 360 * mw, my0 + (76 - lat) / 132 * mh)
+# ------------------------------------------------------------- bottom zone
+BOT_Y = 806
+dr.line([(MX, BOT_Y), (W - MX, BOT_Y)], fill=INK, width=2)
+f_sec = F(SANS_B, 11)
+dr.text((MX, BOT_Y + 6), "WHERE IT HAPPENED - THE OVERNIGHT MAP", font=f_sec, fill=NAVY)
+dr.text((486, BOT_Y + 6), "ALSO ON THE NIGHT - 27 MORE STORIES", font=f_sec, fill=NAVY)
+
+MAP_X, MAP_Y, MAP_W, MAP_H = 14, 828, 456, 118
+dr.rectangle([MAP_X, MAP_Y, MAP_X + MAP_W, MAP_Y + MAP_H],
+             fill=(24, 44, 40), outline=INK, width=1)
+
+
+def proj(lon, lat):
+    return (MAP_X + (lon + 180) / 360 * MAP_W,
+            MAP_Y + (76 - lat) / 132 * MAP_H)
 
 
 for _name, rings in WORLD.items():
@@ -641,115 +589,104 @@ for _name, rings in WORLD.items():
         pts = []
         for pair in ring.split(","):
             lo, la = pair.split(":")
-            pts.append(project(float(lo), float(la)))
+            pts.append(proj(float(lo), float(la)))
         if len(pts) > 2:
-            pen.polygon(pts, fill=(222, 205, 180))
+            dr.polygon(pts, fill=(96, 138, 96))
 
-PIN_LATLON = {
-    1: (50.5, 26.2), 2: (39.8, 21.4), 3: (94.6, 24.4), 4: (30.7, 36.9),
-    5: (174.8, -41.3), 6: (-115.1, 36.1), 7: (-120.6, 34.7), 8: (-2.96, 53.4),
-    9: (7.7, 45.1), 10: (-81.8, 26.1), 11: (130.4, 33.6), 12: (-81.4, 31.1),
-    13: (-122.4, 37.8), 14: (51.4, 26.7), 15: (49.7, 25.7), 16: (47.4, 29.3),
-    17: (56.3, 26.6), 18: (40.4, 20.9), 19: (95.4, 23.8), 20: (31.5, 37.4),
-    21: (175.6, -40.7), 22: (131.2, 33.1), 23: (129.6, 34.1), 24: (29.9, 36.4),
-    25: (149.1, -35.3), 26: (174.1, -42.0), 27: (176.3, -41.0), 28: (173.4, -40.2),
-    29: (-0.33, 53.74), 30: (8.5, 44.6), 31: (-114.3, 35.6), 32: (-121.4, 35.2),
-    33: (-77.4, 38.9), 34: (-82.6, 25.6), 35: (-80.6, 31.6), 36: (-82.2, 30.6),
-    37: (-81.9, 32.1),
-}
-fpin = F(BOLD, 8)
-for n in range(1, 38):
-    lo, la = PIN_LATLON[n]
-    px, py = project(lo, la)
-    reg = None
-    for card in LEADS + MINIS:
-        if card["n"] == n:
-            reg = card["reg"]
-    if reg is None:
-        reg = BRIEF_REGIONS[n]
-    col = REGIONS[reg]
-    pen.ellipse([px - 7, py - 7, px + 7, py + 7], fill=col, outline=WHITE, width=1)
-    s = str(n)
-    pen.text((px - tw(fpin, s) / 2, py - 4), s, font=fpin, fill=WHITE)
-
-# D5 briefs: 16 left after 8 briefs were converted to minis (14–21).
-# (region, one-line text, source) — text never wraps.
-BRIEF_DATA = [
-    (22, "ASIA", "Wakamotoharu v Atamifuji helps decide yusho", "JSA"),
-    (23, "ASIA", "Atamifuji 11-3 still chases the Kyushu cup", "JSA"),
-    (24, "CLIMATE", "COP31 objections were closed at 03:00 GMT", "Reuters"),
-    (25, "CLIMATE", "Chris Bowen co-hosts COP31 for Australia", "COP31 hosts"),
-    (26, "OCEANIA", "Nicholls 175 anchors New Zealand's 368", "AFP"),
-    (27, "OCEANIA", "Bumrah takes 4-92 in New Zealand's innings", "AFP"),
-    (28, "OCEANIA", "India's 720/9 came in 166 overs at Wellington", "IANS"),
-    (29, "EUROPE", "Hull v Brighton kicks off 14:00 UTC", "PL"),
-    (30, "EUROPE", "Alcaraz fought back past Shelton in semi", "Reuters"),
-    (31, "AMERICAS", "Las Vegas is round 22 of the F1 season", "F1"),
-    (32, "AMERICAS", "Booster B1097 returns to Landing Zone 4", "VSFB"),
-    (33, "AMERICAS", "NROL-136 built with Northrop Grumman", "VSFB"),
-    (34, "AMERICAS", "Thitikul & Yoshida one back at -17", "LPGA"),
-    (35, "AMERICAS", "Penge shares the RSM lead at -9", "Reuters"),
-    (36, "AMERICAS", "Neergaard-Petersen shares RSM lead -9", "Reuters"),
-    (37, "AMERICAS", "RSM Classic final round moves to Monday", "Reuters"),
+# (text, region, lon, lat) for the 27 briefs, stories 14-40.
+BRIEFS = [
+    ("Bahrain ministry reported fires 23:25 local, Sat", "GULF", 50.6, 26.0),
+    ("Bahrain asks UN Council to enforce Resolution 2817", "GULF", 50.4, 26.4),
+    ("Kuwait drone grab: first at Ali Al Salem since September", "GULF", 47.9, 29.3),
+    ("Hormuz tanker hit Sat 11:27 UTC (UKMTO)", "GULF", 56.3, 26.6),
+    ("Mecca sirens first sounded 23:43 Riyadh time, Sat", "ARABIA", 39.7, 21.3),
+    ("NCS clocked the quake at 02:35:57 IST", "ASIA", 94.7, 24.5),
+    ("COP31 objections were closed at 03:00 GMT", "CLIMATE", 30.8, 36.8),
+    ("COP31's $120bn adaptation target fell on Thursday", "CLIMATE", 30.6, 37.0),
+    ("Chris Bowen co-hosts COP31 for Australia", "OCEANIA", 149.1, -35.3),
+    ("COP31 draft recalls the Dubai fossil-fuel deal", "CLIMATE", 55.3, 25.2),
+    ("Rahul 136 tops India's card at Wellington", "OCEANIA", 174.7, -41.2),
+    ("Pant 128 in India's 720/9 declaration", "OCEANIA", 174.9, -41.4),
+    ("Gill 98 · Jaiswal 85 · Padikkal 80 for India", "OCEANIA", 174.5, -41.0),
+    ("Nicholls 175 anchors New Zealand's 368", "OCEANIA", 175.1, -41.3),
+    ("Bumrah 4-92 in New Zealand's innings", "OCEANIA", 174.6, -41.5),
+    ("Las Vegas is round 22 of the F1 season", "AMERICAS", -115.2, 36.0),
+    ("Booster B1097 returns to Landing Zone 4", "AMERICAS", -120.5, 34.6),
+    ("NROL-136 built with Northrop Grumman", "AMERICAS", -120.7, 34.8),
+    ("Hull v Brighton kicks off 14:00 UTC", "EUROPE", -0.3, 53.7),
+    ("Anfield clash is Premier League Matchweek 11", "EUROPE", -3.1, 53.5),
+    ("Alcaraz fought back past Shelton in the semi", "EUROPE", 7.6, 45.0),
+    ("Thitikul & Yoshida sit one back at -17", "AMERICAS", -81.7, 26.2),
+    ("Wakamotoharu v Atamifuji decides the yusho", "ASIA", 130.3, 33.5),
+    ("Atamifuji 11-3 still chases the Kyushu cup", "ASIA", 130.5, 33.7),
+    ("Penge shares the RSM lead at -9", "AMERICAS", -81.5, 31.2),
+    ("Neergaard-Petersen shares the RSM lead at -9", "AMERICAS", -81.3, 31.0),
+    ("RSM Classic final round moves to Monday", "AMERICAS", -81.6, 31.4),
 ]
-fbrief = F(MED, 11)
-fbrief_reg = F(BOLD, 11)
-for i, (n, reg, text, src) in enumerate(BRIEF_DATA):
-    col = REGIONS[reg]
-    yy = 786 + i * 13
-    bx = 530
-    # coloured region number badge
-    pen.ellipse([bx, yy + 1, bx + 11, yy + 12], fill=col)
-    fn = F(BOLD, 7 if n >= 10 else 8)
+CARD_PINS = {1: (50.5, 26.2), 2: (39.8, 21.4), 3: (94.6, 24.4), 4: (30.7, 36.9),
+             5: (174.8, -41.3), 6: (-115.1, 36.1), 7: (-120.6, 34.7),
+             8: (-2.96, 53.4), 9: (7.7, 45.1), 10: (-81.8, 26.1),
+             11: (130.4, 33.6), 12: (-81.4, 31.1), 13: (-122.4, 37.8)}
+CARD_REGIONS = {1: "GULF", 2: "ARABIA", 3: "ASIA", 4: "CLIMATE", 5: "OCEANIA",
+                6: "AMERICAS", 7: "AMERICAS", 8: "EUROPE", 9: "EUROPE",
+                10: "AMERICAS", 11: "ASIA", 12: "AMERICAS", 13: "AMERICAS"}
+
+# (d) Numbered pins for ALL 40 stories.
+ALL_PINS = [(n, CARD_REGIONS[n], CARD_PINS[n][0], CARD_PINS[n][1])
+            for n in range(1, 14)]
+ALL_PINS += [(14 + i, b[1], b[2], b[3]) for i, b in enumerate(BRIEFS)]
+f_pin = F(SANS_B, 8)
+for n, region, lo, la in ALL_PINS:
+    px, py = proj(lo, la)
+    dr.ellipse([px - 6.5, py - 6.5, px + 6.5, py + 6.5], fill=REGIONS[region],
+               outline=WHITE, width=1)
     s = str(n)
-    pen.text((bx + 5.5 - tw(fn, s) / 2, yy + 3), s, font=fn, fill=WHITE)
-    x = bx + 15
-    pen.text((x, yy), reg, font=fbrief_reg, fill=col)
-    x += tw(fbrief_reg, reg) + 5
-    pen.text((x, yy), text, font=fbrief, fill=INKC)
-    x += tw(fbrief, text) + 5
-    pen.text((x, yy), f"({src})", font=fbrief, fill=GREYC)
+    dr.text((px - tw(f_pin, s) / 2, py - 4.5), s, font=f_pin, fill=WHITE)
+dr.text((MX, MAP_Y + MAP_H + 4),
+        "Numbered pins = all 40 stories: 1-13 pictured cards, 14-40 the briefs beside the map",
+        font=F(SANS, 9), fill=INK)
 
-TOTAL_STORIES = len(LEADS) + len(MINIS) + len(BRIEF_DATA)
-assert TOTAL_STORIES == 37, TOTAL_STORIES
-assert TOTAL_STORIES == TALLY_TOTAL, (TOTAL_STORIES, TALLY_TOTAL)
-assert len(PIN_LATLON) == TOTAL_STORIES
+f_brief = F(SANS, 9)
+f_briefn = F(SANS_B, 9)
+for col_i, items in enumerate([BRIEFS[:14], BRIEFS[14:]]):
+    cx = 486 + col_i * 270
+    for i, (text, region, _lo, _la) in enumerate(items):
+        yy = 828 + i * 9.6
+        n = 14 + col_i * 14 + i
+        dr.text((cx, yy), str(n), font=f_briefn, fill=REGIONS[region])
+        dr.text((cx + 19, yy), text, font=f_brief, fill=INK)
 
-# ============================================================ DATE CHECK
-# Three-part content kept from the first r3 build (no new space).
-DC_Y = 994
-pen.rectangle([14, DC_Y, PAGE_W - 14, DC_Y + 29], outline=REDC, width=2)
-pen.text((22, DC_Y + 4), "DATE CHECK", font=F(BOLD, 10), fill=REDC)
-fdc = F(MED, 9)
-dc_lines = [
-    "LEFT OUT (not 22 Nov): Lviv strikes (20 Nov) · Peru M6.9 quake (20/21 Nov) · 400-drone barrage (19-20 Nov) · "
-    "ICJ ruling (19 Nov) · Berlin Coalition talks (19 Nov) · Geneva killer-robot deal (21 Nov).",
-    "NOT YET (same day, unfinished): COP31 final adoption · Liverpool v Man Utd result · ATP Turin final result. "
-    "UNCONFIRMED / CONTESTED: IRGC claim of 2 Patriot radars destroyed · Houthi interception claim.",
-    "HOW WE CHECKED: CONFIRMED = 2+ major outlets · OFFICIAL = on the record · REPORTED = 1 major outlet · "
-    "CLAIM = one-sided claim. Every story above happened, or was first reported, on Sunday 22 November 2026.",
-]
-for i, line in enumerate(dc_lines):
-    pen.text((112, DC_Y + 1 + i * 9), line, font=fdc, fill=INKC)
+# -------------------------------------------------------------- DATE CHECK
+DC_Y = 972
+dr.rectangle([MX, DC_Y, W - MX, DC_Y + 28], outline=RED, width=2)
+dr.text((22, DC_Y + 5), "DATE CHECK", font=F(SANS_B, 10), fill=RED)
+dc_text = ("Left out as not 22 Nov: Lviv strikes (20 Nov) · Peru M6.9 quake (20/21 Nov) · "
+           "400-drone barrage (19-20 Nov) · ICJ ruling (19 Nov) · Berlin Coalition talks "
+           "(19 Nov) · Geneva killer-robot deal (21 Nov). Not yet: Davis Cup final, 29 Nov.")
+f_dc = F(SANS, 9)
+for i, line in enumerate(wrap(f_dc, dc_text, W - 130)[:2]):
+    dr.text((112, DC_Y + 4 + i * 11), line, font=f_dc, fill=INK)
+dr.text((MX, 1006),
+        "Every story happened, or was first reported, on Sunday 22 November 2026. "
+        "Contested claims are attributed.",
+        font=F(SANS, 9), fill=GREY)
+foot_r = "Sources named on each card · Original drawings"
+dr.text((W - MX - tw(F(SANS, 9), foot_r), 1006), foot_r, font=F(SANS, 9), fill=GREY)
 
-# ============================================================ save
-tmp = os.path.join(BASE, "_full.png")
-canvas.save(tmp)
-chosen = None
-for colours in (256, 224, 192, 160):
-    q = canvas.quantize(colors=colours, method=Image.MEDIANCUT, dither=Image.FLOYDSTEINBERG)
-    q.save(os.path.join(BASE, "entry.png"), optimize=True)
-    chosen = os.path.getsize(os.path.join(BASE, "entry.png"))
-    print(f"palette={colours} entry bytes={chosen}")
-    if chosen <= 170_000:
+# ------------------------------------------------------------------- save
+assert sum(c for _n, c in TALLY) == 13 + len(BRIEFS) == 40
+img.save(os.path.join(HERE, "_full.png"))
+best = None
+for colors in (256, 224, 192):
+    q = img.quantize(colors=colors, method=Image.MEDIANCUT,
+                     dither=Image.FLOYDSTEINBERG)
+    out = os.path.join(HERE, "entry.png")
+    q.save(out, optimize=True)
+    best = os.path.getsize(out)
+    print(f"colors={colors} bytes={best}")
+    if best <= 160_000:
         break
-canvas.resize((300, 300), Image.LANCZOS).save(os.path.join(BASE, "entry-300.png"))
-os.remove(tmp)
-print("entry bytes:", chosen, "| date cap px:", DATE_CAP_PX, "| digit px:", DIGIT_PX)
-print("subdeck px:", SUBDECK_PX, "| lead scene px:", LEAD_SCENE_H, "| mini scene px:", MINI_SCENE_H)
-print("pictured:", len(LEADS) + len(MINIS), "= 3 leads +", len(MINIS), "minis")
-print("stories:", TOTAL_STORIES, "=", len(LEADS) + len(MINIS), "cards +", len(BRIEF_DATA),
-      "briefs | tally sum:", TALLY_TOTAL)
-print("badges:", len(LEADS) + len(MINIS), "/", len(LEADS) + len(MINIS),
-      "| pins:", len(PIN_LATLON), "/", TOTAL_STORIES)
-print("avg facts/card:", sum(c["facts"] for c in LEADS + MINIS) / (len(LEADS) + len(MINIS)))
+os.remove(os.path.join(HERE, "_full.png"))
+img.resize((300, 300), Image.LANCZOS).save(os.path.join(HERE, "entry-300.png"))
+print("entry bytes:", best, "| pictured cards: 13 | stories: 40 |",
+      "tally:", TALLY, "sum:", sum(c for _n, c in TALLY))
