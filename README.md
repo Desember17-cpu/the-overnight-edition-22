@@ -1,8 +1,11 @@
+[![make.fun · news-image-20261122](https://make.fun/badge/news-image-20261122.svg)](https://make.fun/bounty/news-image-20261122?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261122)
+[![rank](https://make.fun/badge/news-image-20261122/Desember17-cpu/the-overnight-edition-22/rank.svg)](https://make.fun/bounty/news-image-20261122/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261122)
+[![reward](https://make.fun/badge/news-image-20261122/Desember17-cpu/the-overnight-edition-22/reward.svg)](https://make.fun/bounty/news-image-20261122?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261122)
+
 # The Overnight Edition — News Image 20261122
 
-![News Image 20261122](https://make.fun/badge/news-image-20261122.svg)
-![Rank](https://make.fun/badge/news-image-20261122/Desember17-cpu/the-overnight-edition-22/rank.svg)
-![Reward](https://make.fun/badge/news-image-20261122/Desember17-cpu/the-overnight-edition-22/reward.svg)
+
+
 
 A one-page broadsheet for **Sunday 22 November 2026**, drawn as a 3D layered
 page from the night desk: the stories run in the order the night happened.
