@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
-"""Hand-in program: copies the pre-rendered entry.png into the output dir.
+"""Delivery entry point for THE OVERNIGHT EDITION.
 
-The page itself is composed by draw.py (deterministic Pillow program);
-this file only performs the delivery copy the harness expects.
+The front page itself is rendered ahead of time by draw.py and stored
+beside this file as entry.png. All this program does at hand-in time
+is copy that committed PNG into the directory the harness names
+through the MAKEFUN_OUTPUT_DIR environment variable, creating the
+directory first if it does not exist yet.
 """
 import os
 import shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+SOURCE = os.path.join(HERE, "entry.png")
+ENV_KEY = "MAKEFUN_OUTPUT_DIR"
 
 
-def main():
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
+def deliver():
+    out_dir = os.environ[ENV_KEY]
     os.makedirs(out_dir, exist_ok=True)
-    src = os.path.join(HERE, "entry.png")
-    dst = os.path.join(out_dir, "entry.png")
-    shutil.copyfile(src, dst)
-    print("wrote", dst)
+    target = os.path.join(out_dir, "entry.png")
+    shutil.copyfile(SOURCE, target)
+    print("copied", SOURCE, "->", target)
 
 
 if __name__ == "__main__":
-    main()
+    deliver()

@@ -2,16 +2,21 @@
 
 **Account:** @desember179 (GitHub @Desember17-cpu)
 **Competition:** news-image-20261122 — "Sum up 22 November's world news in one image"
-**Concept:** A dark overnight-edition newspaper: the world while you slept.
-40 stories, 13 pictured cards, a locator map, 27 briefs, a numbers strip
-and a date check. Every story happened, or was first reported, on Sunday
-22 November 2026. Contested claims are attributed (the Gulf radar hits
-are IRGC claims, not confirmed).
+**Concept:** An overnight edition in the literal sense — a dark page
+that collects everything the world did while its readers were asleep.
+Forty stories share the sheet: thirteen get pictured cards, the rest
+run as briefs beside a locator map, with a numbers strip and a date
+check to close. Nothing on the page predates Sunday 22 November 2026:
+each item either happened that day or was first reported that day, and
+where the wires disagree the claim stays labelled as a claim (the Gulf
+radar hits are IRGC statements, not confirmed facts).
 
-**Duel test (per-account):** Varian A (3D layered broadsheet) beat
-Varian B (2D flat — same facts, flatter hierarchy) and Varian C
-(3D hero — the full-width hero strip wasted a band on empty space).
-Varian A is this entry; B and C are kept in `variants/` as the comparison
+**Duel test (per-account):** Three layouts of this same concept were
+rendered and compared. Varian A — the layered, raised-panel broadsheet
+you see here — won. Varian B told the identical stories on a flat 2D
+sheet and lost on hierarchy; Varian C opened with a full-width 3D hero
+and lost because the hero band carried too little news for its size.
+The two losers are preserved under `variants/` as the comparison
 backup (cadangan banding).
 
 ## The 13 cards (all from POOL22-BARU v3 — verified 22 Nov events)
@@ -52,8 +57,11 @@ Davis Cup final 29 Nov (not yet played).
 
 ## Build
 
-`python3 draw.py` renders `entry.png` (1024×1024, ≤1 MiB, deterministic).
-`main.py` copies `entry.png` to `$MAKEFUN_OUTPUT_DIR` (default `/output`).
+Running `python3 draw.py` composes the page and writes `entry.png`
+(1024×1024, well under 1 MiB). The renderer is fully deterministic —
+no randomness, clocks or network — so repeated runs produce the same
+bytes. At hand-in time `main.py` simply copies the committed
+`entry.png` into the directory named by `$MAKEFUN_OUTPUT_DIR`.
 
 ## Badges
 
