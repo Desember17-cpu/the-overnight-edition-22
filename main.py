@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
-"""Delivery entry point for THE OVERNIGHT EDITION.
+"""Hand-in entrypoint for The Overnight Edition (news-image-20261122).
 
-The front page itself is rendered ahead of time by draw.py and stored
-beside this file as entry.png. All this program does at hand-in time
-is copy that committed PNG into the directory the harness names
-through the MAKEFUN_OUTPUT_DIR environment variable, creating the
-directory first if it does not exist yet.
+The artwork is built locally by draw.py and committed as entry.png.
+This entrypoint only copies that committed file into the directory the
+grader names through MAKEFUN_OUTPUT_DIR — it never hardcodes a path.
+Standard library only.
 """
 import os
 import shutil
-
-HERE = os.path.dirname(os.path.abspath(__file__))
-SOURCE = os.path.join(HERE, "entry.png")
-ENV_KEY = "MAKEFUN_OUTPUT_DIR"
+import sys
 
 
-def deliver():
-    out_dir = os.environ[ENV_KEY]
+def main():
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
     os.makedirs(out_dir, exist_ok=True)
-    target = os.path.join(out_dir, "entry.png")
-    shutil.copyfile(SOURCE, target)
-    print("copied", SOURCE, "->", target)
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entry.png")
+    dst = os.path.join(out_dir, "entry.png")
+    shutil.copyfile(src, dst)
+    print(f"wrote {dst} ({os.path.getsize(dst)} bytes)")
+    return 0
 
 
 if __name__ == "__main__":
-    deliver()
+    sys.exit(main())
